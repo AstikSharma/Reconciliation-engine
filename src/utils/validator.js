@@ -13,7 +13,7 @@ export const validateAndNormalizeRow = (rawRow) => {
   const errors = [];
   const normalizedData = {};
 
-  const rawId = rawRow.id || rawRow.tx_id || rawRow.txid || rawRow.external_id;
+  const rawId = rawRow.transaction_id || rawRow.id || rawRow.tx_id || rawRow.txid || rawRow.external_id;
   if (!rawId || String(rawId).trim() === '') {
     errors.push('Missing unique transaction identifier (id/tx_id).');
   } else {

@@ -36,6 +36,13 @@ export const ingestTransactionCSV = async (filePath, source, jobId) => {
       .on('data', async (rawRow) => {
         totalRows++;
         const validation = validateAndNormalizeRow(rawRow);
+        if (validation.status === 'malformed' && totalRows <= 1) {
+          console.log(`\n=================== [DEBUG: ${source.toUpperCase()} ROW 1] ===================`);
+          console.log('Parsed Object Keys from CSV:', Object.keys(rawRow));
+          console.log('Raw Values:', JSON.stringify(rawRow));
+          console.log('Validation Rejection Reasons:', validation.errors);
+          console.log('==================================================================\n');
+        }
         const dbDocument = {
           source,
           status: validation.status,
