@@ -300,6 +300,7 @@ QUANTITY_TOLERANCE_PCT=0.01
 npm run dev
 
 # Run automated end-to-end integration test flight
+# Just for clarity, run in a new terminal separate from the one where npm run dev was executed, make sure the terminal (bash) directory is opened in the same directory (Reconciliation-engine)
 npm test
 ```
 
