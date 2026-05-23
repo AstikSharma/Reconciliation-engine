@@ -271,9 +271,9 @@ This guarantees:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/tx-reconciliation-engine.git
+git clone https://github.com/your-username/Reconciliation-engine.git
 
-cd tx-reconciliation-engine
+cd Reconciliation-engine
 
 # Install production and development dependencies
 npm install
@@ -288,8 +288,6 @@ Create a `.env` file in the root directory:
 ```env
 PORT=3000
 MONGODB_URI=mongodb+url_here
-
-# Matching Engine Defaults
 TIMESTAMP_TOLERANCE_SECONDS=300
 QUANTITY_TOLERANCE_PCT=0.01
 ```
