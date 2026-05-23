@@ -3,7 +3,7 @@ import path from 'path';
 import FormData from 'form-data';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = process.env.API_URL || 'http://localhost:3000/api';
 const MOCK_DIR = path.join(process.cwd(), 'mock_data');
 
 function generateMockCSVFiles() {
