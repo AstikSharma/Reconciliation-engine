@@ -257,3 +257,171 @@ This guarantees:
 - Streams API
 
 ---
+
+# 6. Setup & Execution Guide
+
+## Prerequisites
+
+- Node.js (v18+ recommended)
+- MongoDB (Local instance or MongoDB Atlas cluster connection string)
+
+---
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/tx-reconciliation-engine.git
+
+cd tx-reconciliation-engine
+
+# Install production and development dependencies
+npm install
+```
+
+---
+
+## Environment Configuration
+
+Create a `.env` file in the root directory:
+
+```env
+PORT=3000
+MONGODB_URI=mongodb+url_here
+
+# Matching Engine Defaults
+TIMESTAMP_TOLERANCE_SECONDS=300
+QUANTITY_TOLERANCE_PCT=0.01
+```
+
+---
+
+## Running the Application
+
+```bash
+# Start development server with hot-reloading
+npm run dev
+
+# Run automated end-to-end integration test flight
+npm test
+```
+
+---
+
+# 7. API Reference Contract
+
+All endpoints are prefixed with `/api`.
+
+---
+
+## 1. Trigger Reconciliation
+
+### URL
+```text
+/reconcile
+```
+
+### Method
+```http
+POST
+```
+
+### Content-Type
+```text
+multipart/form-data
+```
+
+### Payload
+
+| Field | Type | Description |
+|---|---|---|
+| `user_file` | File | CSV export uploaded by the user |
+| `exchange_file` | File | CSV export uploaded from exchange |
+| `timestampToleranceSeconds` | Integer | Optional tolerance override |
+| `quantityTolerancePct` | Float | Optional quantity variance override |
+
+---
+
+## 2. Fetch Report Summary
+
+### URL
+```text
+/report/:runId/summary
+```
+
+### Method
+```http
+GET
+```
+
+### Success Response (`200 OK`)
+
+```json
+{
+  "runId": "6a114d02979bd3ec11baf13e",
+  "status": "completed",
+  "summary": {
+    "totalUserRows": 26,
+    "totalExchangeRows": 25,
+    "matchedCount": 24,
+    "conflictingCount": 1,
+    "unmatchedUserCount": 1,
+    "unmatchedExchangeCount": 0
+  }
+}
+```
+
+---
+
+## 3. Fetch Unmatched Anomalies
+
+### URL
+```text
+/report/:runId/unmatched
+```
+
+### Method
+```http
+GET
+```
+
+### Description
+
+Extracts only the problematic reconciliation items that failed matching loops, alongside their precise operational reason strings.
+
+---
+
+## 4. Stream Detailed CSV Audit Report
+
+### URL
+```text
+/export/:runId
+```
+
+### Method
+```http
+GET
+```
+
+### Description
+
+Dynamically streams a high-speed flattened tabular layout directly into a downloadable spreadsheet response using memory-safe cursor streaming.
+
+---
+
+# Final Checkpoint 🏁
+
+This documentation now fully explains:
+
+- **Why** the architecture exists
+- **What** the system stores and processes
+- **How** the reconciliation engine operates operationally
+
+The project demonstrates:
+- streaming ingestion pipelines,
+- reconciliation logic,
+- fault-tolerant processing,
+- auditability,
+- and memory-safe export strategies.
+
+---
