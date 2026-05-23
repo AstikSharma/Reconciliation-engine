@@ -315,16 +315,19 @@ All endpoints are prefixed with `/api`.
 ## 1. Trigger Reconciliation
 
 ### URL
+
 ```text
 /reconcile
 ```
 
 ### Method
+
 ```http
 POST
 ```
 
 ### Content-Type
+
 ```text
 multipart/form-data
 ```
@@ -338,33 +341,83 @@ multipart/form-data
 | `timestampToleranceSeconds` | Integer | Optional tolerance override |
 | `quantityTolerancePct` | Float | Optional quantity variance override |
 
+### Success Response (`200 OK`)
+
+```json
+{
+  "message": "Reconciliation process completed successfully.",
+  "jobId": "6a11562dfc54e94cf5362e92",
+  "summary": {
+    "totalUserRows": 3,
+    "totalExchangeRows": 3,
+    "malformedUserRows": 0,
+    "malformedExchangeRows": 0,
+    "matchedCount": 1,
+    "conflictingCount": 1,
+    "unmatchedUserCount": 1,
+    "unmatchedExchangeCount": 1
+  }
+}
+```
+
+### Notes
+
+The returned `jobId` acts as the operational reconciliation execution identifier.
+
+This identifier should be reused across:
+- summary retrieval,
+- unmatched anomaly extraction,
+- and export stream generation endpoints.
+
 ---
 
 ## 2. Fetch Report Summary
 
 ### URL
+
 ```text
 /report/:runId/summary
 ```
 
 ### Method
+
 ```http
 GET
+```
+
+### Replace `:runId` With
+
+The reconciliation execution identifier returned from:
+
+```text
+POST /reconcile
+```
+
+Example:
+
+```text
+/report/6a11562dfc54e94cf5362e92/summary
 ```
 
 ### Success Response (`200 OK`)
 
 ```json
 {
-  "runId": "6a114d02979bd3ec11baf13e",
+  "runId": "6a11562dfc54e94cf5362e92",
   "status": "completed",
+  "tolerancesUsed": {
+    "timestampToleranceSeconds": 300,
+    "quantityTolerancePct": 0.01
+  },
   "summary": {
-    "totalUserRows": 26,
-    "totalExchangeRows": 25,
-    "matchedCount": 24,
+    "totalUserRows": 3,
+    "totalExchangeRows": 3,
+    "malformedUserRows": 0,
+    "malformedExchangeRows": 0,
+    "matchedCount": 1,
     "conflictingCount": 1,
     "unmatchedUserCount": 1,
-    "unmatchedExchangeCount": 0
+    "unmatchedExchangeCount": 1
   }
 }
 ```
@@ -374,38 +427,223 @@ GET
 ## 3. Fetch Unmatched Anomalies
 
 ### URL
+
 ```text
 /report/:runId/unmatched
 ```
 
 ### Method
+
 ```http
 GET
+```
+
+### Replace `:runId` With
+
+The reconciliation execution identifier returned from:
+
+```text
+POST /reconcile
+```
+
+Example:
+
+```text
+/report/6a11562dfc54e94cf5362e92/unmatched
 ```
 
 ### Description
 
 Extracts only the problematic reconciliation items that failed matching loops, alongside their precise operational reason strings.
 
+### Success Response (`200 OK`)
+
+```json
+[
+  {
+    "category": "Unmatched_User",
+    "reason": "No corresponding record found for asset USDC within the ±300s window.",
+    "userTxId": {
+      "externalId": "tx_003",
+      "asset": "usdc",
+      "type": "TRANSFER_IN",
+      "quantity": 500
+    }
+  },
+  {
+    "category": "Unmatched_Exchange",
+    "reason": "Transaction documented inside exchange exports, missing relative user tracking records.",
+    "exchangeTxId": {
+      "externalId": "tx_004",
+      "asset": "sol",
+      "type": "TRANSFER_IN",
+      "quantity": 25
+    }
+  }
+]
+```
+
 ---
 
 ## 4. Stream Detailed CSV Audit Report
 
 ### URL
+
 ```text
 /export/:runId
 ```
 
 ### Method
+
 ```http
 GET
+```
+
+### Replace `:runId` With
+
+The reconciliation execution identifier returned from:
+
+```text
+POST /reconcile
+```
+
+Example:
+
+```text
+/export/6a11562dfc54e94cf5362e92
 ```
 
 ### Description
 
 Dynamically streams a high-speed flattened tabular layout directly into a downloadable spreadsheet response using memory-safe cursor streaming.
 
+### Success Response (`200 OK`)
+
+```csv
+Category,Reason,User_TxID,User_Timestamp,User_Asset,User_Type,User_Quantity,Exchange_TxID,Exchange_Timestamp,Exchange_Asset,Exchange_Type,Exchange_Quantity
+
+Matched,"Paired perfectly. Quantity variance (0.0000%) is within the allowed 0.01% limit.",tx_001,2026-05-23T10:00:00.000Z,BTC,TRANSFER_OUT,1.5,tx_001,2026-05-23T10:01:15.000Z,BTC,TRANSFER_IN,1.5
+
+Conflicting,"Proximity match found, but quantity variance (0.52%) exceeds the specified 0.01% threshold limit.",tx_002,2026-05-23T10:05:00.000Z,ETH,BUY,10,tx_002,2026-05-23T10:05:10.000Z,ETH,BUY,10.052
+```
+
 ---
+
+---
+
+# 8. Testing the Deployed Production Instance
+
+The reconciliation engine has also been deployed publicly for operational verification.
+
+## Deployed Base URL
+
+```text
+https://reconciliation-engine-fmox.onrender.com
+```
+
+---
+
+## Health Verification
+
+Before executing any reconciliation operations, verify that the deployment is active.
+
+### Request
+
+```bash
+curl https://reconciliation-engine-fmox.onrender.com/health
+```
+
+### Expected Response
+
+```json
+{
+  "status": "UP",
+  "message": "Reconciliation Engine is running"
+}
+```
+
+---
+
+## Running the Automated Integration Test Against Production
+
+The project includes a fully automated end-to-end verification script that:
+- generates mock transactional CSV datasets,
+- uploads them into the deployed API,
+- validates reconciliation logic,
+- verifies streamed export output,
+- validates dashboard summaries,
+- and confirms unmatched anomaly extraction.
+
+---
+
+### Step 1 — Open Terminal in Project Root
+
+```text
+Reconciliation-engine/
+```
+
+---
+
+### Step 2 — Execute Production Verification Suite
+
+### Linux / Git Bash
+
+```bash
+export API_URL=https://reconciliation-engine-fmox.onrender.com/api
+npm test
+```
+
+### Windows CMD
+
+```cmd
+set API_URL=https://reconciliation-engine-fmox.onrender.com/api
+npm test
+```
+
+---
+
+## Expected Verification Flow
+
+The automated script validates:
+
+- `POST /api/reconcile`
+- `GET /api/report/:runId/summary`
+- `GET /api/report/:runId/unmatched`
+- `GET /api/export/:runId`
+
+The console should eventually print:
+
+```text
+[Test Success] 100% of the API Engine Contract has been fully verified.
+```
+
+---
+
+## Manual Production API Testing
+
+### Trigger Reconciliation
+
+```bash
+curl -X POST https://reconciliation-engine-fmox.onrender.com/api/reconcile \
+  -F "user_file=@test_files/user_transactions.csv" \
+  -F "exchange_file=@test_files/exchange_transactions.csv" \
+  -F "timestampToleranceSeconds=300" \
+  -F "quantityTolerancePct=0.01"
+```
+
+---
+
+## Important Note Regarding Render Free Tier
+
+The deployed Render instance may temporarily enter sleep mode after inactivity.
+
+If the first request appears delayed:
+- wait briefly,
+- allow Render to cold-start the container,
+- then retry the request.
+
+---
+
 
 # Final Checkpoint 🏁
 
