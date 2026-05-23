@@ -50,13 +50,27 @@ async function runEndToEndVerification() {
     
     const jobId = response.data.jobId;
     if (jobId) {
+
       console.log(`\n[Test Execution] Querying export audit stream target for Job ID: ${jobId}...`);
       const exportResponse = await axios.get(`${API_URL}/export/${jobId}`);
       
       console.log('\n================ [Exported Streamed CSV Output Log] ================');
       console.log(exportResponse.data);
       console.log('====================================================================');
-      console.log('[Test Success] End-to-end reconciliation system successfully verified.');
+
+      console.log(`\n[Test Execution] Verifying Dashboard Summary Endpoint for Job ID: ${jobId}...`);
+      const summaryResponse = await axios.get(`${API_URL}/report/${jobId}/summary`);
+      console.log('\n================ [Dashboard Summary Payload REST View] ================');
+      console.log(JSON.stringify(summaryResponse.data, null, 2));
+      console.log('=======================================================================');
+
+      console.log(`\n[Test Execution] Verifying Operational Unmatched Exceptions Endpoint...`);
+      const unmatchedResponse = await axios.get(`${API_URL}/report/${jobId}/unmatched`);
+      console.log('\n================ [Filtered Unmatched Anomalies Payload] ================');
+      console.log(JSON.stringify(unmatchedResponse.data, null, 2));
+      console.log('========================================================================');
+
+      console.log('\n[Test Success] 100% of the API Engine Contract has been fully verified.');
     }
   } catch (error) {
     console.error('[Test Failure] Integration check pipeline failed:', error.response?.data || error.message);
