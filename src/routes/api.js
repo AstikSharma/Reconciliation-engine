@@ -15,6 +15,9 @@ router.post(
   ReconciliationController.runReconciliation
 );
 
+router.get('/report/:runId', ReconciliationController.getFullReport);
+router.get('/report/:runId/summary', ReconciliationController.getReportSummary);
+router.get('/report/:runId/unmatched', ReconciliationController.getUnmatchedReport);
 router.get('/export/:jobId', ReconciliationController.exportReport);
 
 export default router;

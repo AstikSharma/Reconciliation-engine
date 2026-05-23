@@ -1,5 +1,5 @@
-import { IngestionService } from '../services/ingestionService.js';
-import { MatchingEngine } from '../services/matchingEngine.js';
+import { ingestTransactionCSV } from '../services/ingestionService.js';
+import { runMatchingEngine } from '../services/matchingEngine.js';
 import { ReconciliationJob, ReconciliationResult } from '../models/Reconciliation.js';
 import { config } from '../config/tolerances.js';
 
@@ -28,11 +28,11 @@ export const ReconciliationController = {
       const exchangeFile = req.files['exchange_file'][0];
 
       const [userMetrics, exchangeMetrics] = await Promise.all([
-        IngestionService.ingestTransactionCSV(userFile.path, 'user', job._id.toString()),
-        IngestionService.ingestTransactionCSV(exchangeFile.path, 'exchange', job._id.toString())
+        ingestTransactionCSV(userFile.path, 'user', job._id.toString()),
+        ingestTransactionCSV(exchangeFile.path, 'exchange', job._id.toString())
       ]);
 
-      const engineBreakdown = await MatchingEngine.runMatchingEngine(job._id.toString(), {
+      const engineBreakdown = await runMatchingEngine(job._id.toString(), {
         timestampToleranceSeconds,
         quantityTolerancePct
       });
@@ -111,5 +111,53 @@ export const ReconciliationController = {
         return res.status(500).json({ error: 'Failed to stream reconciliation export file.' });
       }
     }
+  },
+
+  async getFullReport(req, res) {
+    const { runId } = req.params;
+    try {
+      const results = await ReconciliationResult.find({ jobId: runId })
+        .populate('userTxId')
+        .populate('exchangeTxId');
+        
+      return res.status(200).json(results);
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to fetch full report.', details: error.message });
+    }
+  },
+
+  async getReportSummary(req, res) {
+    const { runId } = req.params;
+    try {
+      const job = await ReconciliationJob.findById(runId);
+      if (!job) {
+        return res.status(404).json({ error: 'Reconciliation run not found.' });
+      }
+      return res.status(200).json({
+        runId: job._id,
+        status: job.status,
+        tolerancesUsed: job.tolerancesUsed,
+        summary: job.summary
+      });
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to fetch summary.', details: error.message });
+    }
+  },
+
+  async getUnmatchedReport(req, res) {
+    const { runId } = req.params;
+    try {
+      const unmatchedResults = await ReconciliationResult.find({
+        jobId: runId,
+        category: { $in: ['Unmatched_User', 'Unmatched_Exchange'] }
+      })
+      .populate('userTxId')
+      .populate('exchangeTxId');
+
+      return res.status(200).json(unmatchedResults);
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to fetch unmatched rows.', details: error.message });
+    }
   }
+
 };
