@@ -271,8 +271,7 @@ This guarantees:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Reconciliation-engine.git
-
+git clone https://github.com/AstikSharma/Reconciliation-engine.git
 cd Reconciliation-engine
 
 # Install production and development dependencies
