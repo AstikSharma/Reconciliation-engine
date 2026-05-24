@@ -1,10 +1,6 @@
 # Transaction Reconciliation Engine
 
-## 1. Core Structural Pipeline Architecture
-
-### Architectural Overview
-
-The Transaction Reconciliation Engine uses a decoupled, streaming architectural blueprint explicitly structured to scale horizontally when dealing with heavy multi-megabyte user CSV input feeds.
+## 1. System Architecture
 
 ```text
 [User CSV Input File]
@@ -26,33 +22,27 @@ The Transaction Reconciliation Engine uses a decoupled, streaming architectural 
 
 ---
 
-# 2. Ingestion Resilience Strategy (The Messy-Data Paradigm)
+# 2. Handling Invalid Input Data
 
-Instead of executing standard database drop rules for schema mismatches, the ingestion tier acts as a non-destructive audit engine.
+In case of schema mismatches, malformed rows are preserved instead of discarded.
 
-## Memory Preservation
+## Memory-Efficient Ingestion
 
 Node.js file system readable streams (`fs.createReadStream`) pipe directly into instances of `csv-parse`.
 
-This preserves system bounds by ensuring a flat, linear memory consumption curve of:
-
-$$
-O(1)
-$$
-
-regardless of dataset file footprint size.
+The memory usage stays stable.
 
 ---
 
 ## Bulk Database Buffering
 
-Transactions are grouped into memory-managed batches of 500 documents and pushed concurrently using MongoDB unordered bulk writes:
+Transactions are grouped into batches of 500 documents and inserted using MongoDB unordered bulk writes:
 
 ```js
 insertMany(..., { ordered: false })
 ```
 
-This maintains database connection utilization while filtering out row insertion errors on dirty datasets.
+The ingestion continues even if some rows fail.
 
 ---
 
@@ -79,11 +69,11 @@ The exact parsing failures are preserved inside:
 }
 ```
 
-This ensures that every row remains available for debugging and auditability.
+This keeps malformed entries available for review.
 
 ---
 
-# 3. Database Collection Map Layer
+# 3. Database Schema
 
 ## Collection: `rawtransactions`
 
@@ -97,12 +87,12 @@ This ensures that every row remains available for debugging and auditability.
   "type": "String",
   "asset": "String - Normalized (e.g., 'btc')",
   "quantity": "Number",
-  "rawData": "Mixed (Original Unmutated Object Key-Values)",
-  "jobId": "String - Batch Identifier Lookup"
+  "rawData": "Mixed (Original CSV row data)",
+  "jobId": "String - Batch Identifier"
 }
 ```
 
-### Performance Index Strategy
+### Query Indexing
 
 ```js
 rawtransactions.index({
@@ -129,13 +119,13 @@ rawtransactions.index({
 
 ---
 
-# 4. Matching Algorithm Deep-Dive Logic
+# 4. Reconciliation Logic
 
-The reconciliation algorithm processes entries by targeting chronological execution points.
+The reconciliation algorithm processes entries by matching transactions within a configured time window.
 
 For every valid user transaction, the engine computes:
 
-## Time Scope Bounds
+## Matching Time Range
 
 $$
 [T_{\text{user}} - \Delta t,\ T_{\text{user}} + \Delta t]
@@ -157,22 +147,22 @@ $$
 
 ---
 
-## Chronological Proximity Sorting
+## Timestamp Prioritization
 
 Candidate exchange transactions are:
 - filtered by asset type,
-- constrained inside the configured time scope bounds,
-- and sorted using minimal chronological divergence:
+- filtered within the configured time window,
+- and sorted by closest timestamp difference:
 
 $$
 |T_{\text{user}} - T_{\text{exchange}}|
 $$
 
-This prioritizes the closest chronological event pairs first.
+This prioritizes the closest transaction pairs first.
 
 ---
 
-## Perspective Inversion Remapping
+## Transaction Direction Mapping
 
 The engine automatically normalizes directional counter-party mappings such as:
 
@@ -181,11 +171,11 @@ The engine automatically normalizes directional counter-party mappings such as:
 | `TRANSFER_OUT` | `TRANSFER_IN` |
 | `WITHDRAWAL` | `DEPOSIT` |
 
-This prevents semantic mismatches during reconciliation.
+This prevents incorrect transaction comparisons during reconciliation.
 
 ---
 
-## Classification Partitioning
+## Result Classification
 
 If:
 
@@ -205,16 +195,16 @@ Otherwise:
 Conflicting
 ```
 
-Remaining orphaned rows are categorized as:
+Remaining unmatched rows are categorized as:
 
 - `Unmatched_User`
 - `Unmatched_Exchange`
 
 ---
 
-# 5. Memory-Safe Streaming Report Generation
+# 5. CSV Export Pipeline
 
-The export subsystem bypasses large in-memory allocations entirely using MongoDB cursor streams:
+The export subsystem avoids loading full exports into memory using MongoDB cursor streams:
 
 ```js
 ReconciliationResult.find().cursor()
@@ -222,16 +212,16 @@ ReconciliationResult.find().cursor()
 
 As rows are processed sequentially:
 1. a flattened CSV/string row is generated,
-2. the row is streamed directly into the HTTP response channel using:
+2. the row is streamed directly into the HTTP response using:
 
 ```js
 res.write()
 ```
 
-This guarantees:
+This allows:
 - flat RAM overhead,
 - non-blocking exports,
-- and stable API responsiveness during high-concurrency download workloads.
+- and stable API responsiveness during large exports.
 
 ---
 
@@ -243,7 +233,6 @@ This guarantees:
 - Auditability over silent failure
 - Memory-safe exports
 - Deterministic transaction matching
-- Horizontally scalable ingestion patterns
 
 ---
 
@@ -641,23 +630,5 @@ If the first request appears delayed:
 - wait briefly,
 - allow Render to cold-start the container,
 - then retry the request.
-
----
-
-
-# Final Checkpoint 🏁
-
-This documentation now fully explains:
-
-- **Why** the architecture exists
-- **What** the system stores and processes
-- **How** the reconciliation engine operates operationally
-
-The project demonstrates:
-- streaming ingestion pipelines,
-- reconciliation logic,
-- fault-tolerant processing,
-- auditability,
-- and memory-safe export strategies.
 
 ---
