@@ -177,11 +177,9 @@ This prevents incorrect transaction comparisons during reconciliation.
 
 ## Result Classification
 
-If:
+If the absolute quantity variance is less than or equal to the configured
+`QUANTITY_TOLERANCE_PCT` threshold:
 
-$$
-|\text{Quantity Variance}| \le \text{Quantity Tolerance Percent}
-$$
 the transaction pair is classified as:
 
 ```text
