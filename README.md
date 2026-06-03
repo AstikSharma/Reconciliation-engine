@@ -180,9 +180,8 @@ This prevents incorrect transaction comparisons during reconciliation.
 If:
 
 $$
-|\text{Quantity Variance}| \le \mathtt{QUANTITY\_TOLERANCE\_PCT}
+|\text{Quantity Variance}| \le \text{Quantity Tolerance Percent}
 $$
-
 the transaction pair is classified as:
 
 ```text
