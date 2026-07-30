@@ -4,7 +4,6 @@ import { RawTransaction } from '../models/RawTransaction.js';
 import { validateAndNormalizeRow } from '../utils/validator.js';
 
 /**
- * Streams a CSV file from a system path, validates rows sequentially, and drops them into MongoDB.
  * @param {string} filePath
  * @param {string} source
  * @param {string} jobId
@@ -59,10 +58,12 @@ export const ingestTransactionCSV = async (filePath, source, jobId) => {
           csvParser.pause();
           try {
             await flushBuffer();
+            csvParser.resume();
           } catch (err) {
             console.error(`[Ingestion] Batch save anomaly encountered on source ${source}:`, err.message);
+            csvParser.destroy(err);
+            return;
           }
-          csvParser.resume();
         }
       })
       .on('end', async () => {
