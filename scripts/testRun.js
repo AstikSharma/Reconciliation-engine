@@ -5,78 +5,98 @@ import axios from 'axios';
 
 const API_URL = process.env.API_URL || 'http://localhost:3000/api';
 const MOCK_DIR = path.join(process.cwd(), 'mock_data');
+const ROW_COUNT_PER_FILE = 5000;
 
-function generateMockCSVFiles() {
+function generateLargeMockCSVFiles(rowCount) {
   if (!fs.existsSync(MOCK_DIR)) fs.mkdirSync(MOCK_DIR);
+  console.log(`[Benchmark Setup] Generating ${rowCount.toLocaleString()} rows per file (10,000 total rows)...`);
 
-  const userCSVContent = [
-    'id,timestamp,asset,type,quantity',
-    'tx_001,2026-05-23T10:00:00Z,BTC,TRANSFER_OUT,1.50000',
-    'tx_002,2026-05-23T10:05:00Z,ETH,BUY,10.00000',
-    'tx_003,2026-05-23T10:15:00Z,USDC,TRANSFER_IN,500.00'
-  ].join('\n');
+  const userRows = ['id,timestamp,asset,type,quantity'];
+  const exchangeRows = ['tx_id,timestamp,asset,type,amount'];
+  const assets = ['BTC', 'ETH', 'SOL', 'USDC'];
+  const userTypes = ['TRANSFER_OUT', 'BUY', 'TRANSFER_IN', 'SELL'];
+  const exchangeTypes = ['TRANSFER_IN', 'BUY', 'TRANSFER_IN', 'SELL'];
 
-  const exchangeCSVContent = [
-    'tx_id,timestamp,asset,type,amount',
-    'tx_001,2026-05-23T10:01:15Z,Bitcoin,TRANSFER_IN,1.50000',
-    'tx_002,2026-05-23T10:05:10Z,ETH,BUY,10.05200',
-    'tx_004,2026-05-23T10:20:00Z,SOL,TRANSFER_IN,25.00'
-  ].join('\n');
+  for (let i = 0; i < rowCount; i++) {
+    const txId = `tx_${i}`;
+    const timestamp = new Date(Date.now() - i * 1000).toISOString();
+    const asset = assets[i % assets.length];
+    const qty = (1.5 + i * 0.001).toFixed(5);
 
-  fs.writeFileSync(path.join(MOCK_DIR, 'user_transactions.csv'), userCSVContent);
-  fs.writeFileSync(path.join(MOCK_DIR, 'exchange_transactions.csv'), exchangeCSVContent);
-  console.log('[Test Setup] Mock transactional engine CSV sets written.');
+    userRows.push(`${txId},${timestamp},${asset},${userTypes[i % userTypes.length]},${qty}`);
+
+    const variance = (i % 10 === 0) ? 0.05 : 0.00;
+    const exchangeQty = ((1.5 + i * 0.001) + variance).toFixed(5);
+    exchangeRows.push(`${txId},${timestamp},${asset},${exchangeTypes[i % exchangeTypes.length]},${exchangeQty}`);
+  }
+
+  fs.writeFileSync(path.join(MOCK_DIR, 'user_transactions.csv'), userRows.join('\n'));
+  fs.writeFileSync(path.join(MOCK_DIR, 'exchange_transactions.csv'), exchangeRows.join('\n'));
+  console.log('[Benchmark Setup] Mock dataset written successfully.');
 }
 
-async function runEndToEndVerification() {
-  generateMockCSVFiles();
+async function runBenchmark() {
+  generateLargeMockCSVFiles(ROW_COUNT_PER_FILE);
 
-  console.log('[Test Execution] Dispatching payload data to POST /api/reconcile...');
-  
+  console.log('\n[Benchmark] Dispatched 10,000 records to POST /api/reconcile...');
+
   const form = new FormData();
   form.append('user_file', fs.createReadStream(path.join(MOCK_DIR, 'user_transactions.csv')));
   form.append('exchange_file', fs.createReadStream(path.join(MOCK_DIR, 'exchange_transactions.csv')));
-  
   form.append('timestampToleranceSeconds', '300');
   form.append('quantityTolerancePct', '0.01');
+
+  const baselineHeapMB = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+  let maxHeapObservedBytes = process.memoryUsage().heapUsed;
+
+  const memoryMonitor = setInterval(() => {
+    const currentHeap = process.memoryUsage().heapUsed;
+    if (currentHeap > maxHeapObservedBytes) maxHeapObservedBytes = currentHeap;
+  }, 20);
+
+  const startTime = process.hrtime.bigint();
 
   try {
     const response = await axios.post(`${API_URL}/reconcile`, form, {
       headers: form.getHeaders(),
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
     });
 
-    console.log('\n================ [API Response Verification Summary] ================');
-    console.log(JSON.stringify(response.data, null, 2));
-    
+    const endTime = process.hrtime.bigint();
+    clearInterval(memoryMonitor);
+
+    const totalSeconds = Number(endTime - startTime) / 1000000000;
     const jobId = response.data.jobId;
-    if (jobId) {
 
-      console.log(`\n[Test Execution] Querying export audit stream target for Job ID: ${jobId}...`);
-      const exportResponse = await axios.get(`${API_URL}/export/${jobId}`);
-      
-      console.log('\n================ [Exported Streamed CSV Output Log] ================');
-      console.log(exportResponse.data);
-      console.log('====================================================================');
+    const t0_summary = process.hrtime.bigint();
+    await axios.get(`${API_URL}/report/${jobId}/summary`);
+    const summaryLatencyMS = Number(process.hrtime.bigint() - t0_summary) / 1000000;
 
-      console.log(`\n[Test Execution] Verifying Dashboard Summary Endpoint for Job ID: ${jobId}...`);
-      const summaryResponse = await axios.get(`${API_URL}/report/${jobId}/summary`);
-      console.log('\n================ [Dashboard Summary Payload REST View] ================');
-      console.log(JSON.stringify(summaryResponse.data, null, 2));
-      console.log('=======================================================================');
+    const t0_unmatched = process.hrtime.bigint();
+    await axios.get(`${API_URL}/report/${jobId}/unmatched`);
+    const unmatchedLatencyMS = Number(process.hrtime.bigint() - t0_unmatched) / 1000000;
 
-      console.log(`\n[Test Execution] Verifying Operational Unmatched Exceptions Endpoint...`);
-      const unmatchedResponse = await axios.get(`${API_URL}/report/${jobId}/unmatched`);
-      console.log('\n================ [Filtered Unmatched Anomalies Payload] ================');
-      console.log(JSON.stringify(unmatchedResponse.data, null, 2));
-      console.log('========================================================================');
+    const totalRows = ROW_COUNT_PER_FILE * 2;
+    const peakHeapMB = (maxHeapObservedBytes / 1024 / 1024).toFixed(2);
+    const netMemoryShiftMB = (peakHeapMB - baselineHeapMB).toFixed(2);
+    const rowsPerSecond = (totalRows / totalSeconds).toFixed(0);
 
-      console.log('\n[Test Success] 100% of the API Engine Contract has been fully verified.');
-    }
+    console.log('\n=================== YOUR REAL SYSTEM METRICS ===================');
+    console.log(`• Total Rows Evaluated:         ${totalRows.toLocaleString()} rows`);
+    console.log(`• Execution Duration:           ${totalSeconds.toFixed(3)} seconds`);
+    console.log(`• Processing Velocity:          ${rowsPerSecond} rows/sec`);
+    console.log(`• Net Heap Memory Growth:       ${netMemoryShiftMB} MB (Baseline: ${baselineHeapMB} MB -> Peak: ${peakHeapMB} MB)`);
+    console.log(`• Summary Endpoint Latency:      ${summaryLatencyMS.toFixed(2)} ms`);
+    console.log(`• Unmatched Query Latency:      ${unmatchedLatencyMS.toFixed(2)} ms`);
+    console.log('================================================================');
+
   } catch (error) {
-    console.error('[Test Failure] Integration check pipeline failed:', error.response?.data || error.message);
+    clearInterval(memoryMonitor);
+    console.error('[Benchmark Failure]:', error.response?.data || error.message);
   } finally {
     fs.rmSync(MOCK_DIR, { recursive: true, force: true });
   }
 }
 
-runEndToEndVerification();
+runBenchmark();
